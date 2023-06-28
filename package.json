@@ -1,0 +1,40 @@
+{
+    "name": "texpand",
+    "description": "Web extension for expanding text using predefined codes.",
+    "version": "1.0.0",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/blujedis/texpand.git"
+    },
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build && node ./bundler.cjs",
+        "watch": "vite build --watch",
+        "check": "svelte-check --tsconfig ./tsconfig.json"
+    },
+    "devDependencies": {
+        "@crxjs/vite-plugin": "2.0.0-beta.3",
+        "@sveltejs/vite-plugin-svelte": "1.1.0",
+        "@tailwindcss/aspect-ratio": "^0.4.2",
+        "@tailwindcss/forms": "^0.5.3",
+        "@tailwindcss/typography": "^0.5.9",
+        "@tsconfig/svelte": "3.0.0",
+        "@types/chrome": "0.0.200",
+        "@types/node": "^20.3.1",
+        "adm-zip": "^0.5.10",
+        "autoprefixer": "^10.4.14",
+        "postcss": "^8.4.24",
+        "prettier-plugin-tailwindcss": "^0.3.0",
+        "svelte": "3.57.0",
+        "svelte-check": "2.9.2",
+        "svelte-preprocess": "4.10.7",
+        "tailwindcss": "^3.3.2",
+        "tslib": "2.4.0",
+        "typescript": "4.8.4",
+        "vite": "3.2.0"
+    },
+    "dependencies": {
+        "tailwind-merge": "^1.13.2"
+    }
+}
