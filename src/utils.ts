@@ -1,5 +1,8 @@
 import { writable } from 'svelte/store';
-import type { PrimitiveValue, TabName, TableColumnType, TableRow } from './types';
+import type { Path, PickDeep, PrimitiveValue, RecordDeepSingle, TabName, TableColumnType, TableRow, TypeOrKey } from './types';
+import defaults from './defaults';
+
+const splitExp = /,(?=(?:(?:[^"']*["']){2})*[^"']*$)/;
 
 export const specialChars = [
   '`', '~', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '_', '+', '=',
@@ -15,6 +18,10 @@ export const tab = {
   ...tabStore,
   change: (name: TabName) => tabStore.update(s => name),
 };
+
+export function log(type?: 'log' | 'warn' | 'error' | 'debug', ...message: any[]) {
+  console[type](...message);
+}
 
 export function expandersToRows(obj: Record<string, any>) {
   return Object.entries(obj).reduce((a, [key, value]) => {
@@ -42,7 +49,10 @@ function objToCSV(obj: Record<string, any>, headers?: string[] | null) {
     headers = ['code', 'expanded'];
   let csv = !headers ? '' : headers.join(',');
   for (const [key, value] of Object.entries(obj)) {
-    csv += '\r\n' + key + ',' + value;
+    let normalValue = value;
+    if (value.includes(','))
+      normalValue = '"' + value + '"';
+    csv += '\r\n' + key + ',' + normalValue;
   }
   return csv;
 }
@@ -50,7 +60,11 @@ function objToCSV(obj: Record<string, any>, headers?: string[] | null) {
 function arrayToCSV(arr: Record<string, any>[], headers = true) {
   const keys = Object.keys(arr[0]);
   let csv = headers ? keys.join(',') : '';
-  arr.forEach(v => (csv += '\r\n' + Object.values(v).join(',')));
+  arr.forEach(v => (csv += '\r\n' + Object.values(v).map(v => {
+    if (v.includes(','))
+      v = "'" + v + "'";
+    return v;
+  }).join(',')));
   return csv;
 }
 
@@ -59,7 +73,7 @@ export function csvToObj(str: string, headers = true) {
   const header = headers ? rows.shift() : rows;
   const obj = {} as Record<string, string>;
   rows.forEach(row => {
-    const cols = row.split(',');
+    const cols = row.split(splitExp);
     obj[cols[0]] = cols[1];
   });
   return obj;
@@ -110,4 +124,72 @@ export function fileReader(file: File): Promise<string> {
     reader.onerror = (e) => reject(e);
   });
 
+}
+
+export function getProp<T extends Record<string, any>, P extends Path<T>>(obj: T, key: P, def?: any): PickDeep<T, Extract<P, string>> | null {
+  const paths = (key as string).split('.');
+  const next = paths.shift();
+  let result = null;
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === next) {
+      if (paths.length && typeof v === 'object' && v !== null && !Array.isArray(v)) {
+        return (getProp as any)(v, paths.join('.'), def);
+      }
+      else {
+        if (typeof def !== 'undefined' && typeof v === 'undefined' || v === null)
+          return def;
+        return v;
+      }
+    }
+  }
+  if (typeof def !== 'undefined')
+    return def;
+  return result;
+}
+
+export function setProp<T extends Record<string, any>, P extends Path<T>, V>(obj: T, key: TypeOrKey<P>, value: any): T & RecordDeepSingle<Extract<P, string>, V> {
+  const paths = (key as string).split('.');
+  const next = paths.shift();
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === next) {
+      if (paths.length && typeof v === 'object' && v !== null && !Array.isArray(v)) {
+        return (setProp as any)(obj[k], paths.join(), value);
+      }
+      else {
+        obj[k as P] = value;
+        return obj as any;
+      }
+    }
+    else {
+      if (!paths.length) {
+        obj[next as P] = value;
+        return obj as any;
+      }
+      else {
+        const tmp = { [paths[0]]: undefined };
+        obj[next as P] = (setProp as any)(tmp, paths.join(), value);
+        return obj as any;
+      }
+    }
+  }
+  return obj as any;
+}
+
+const tmp = setProp(defaults, 'settings.other', 'temp')
+
+export function hasProp<T extends Record<string, any>, P extends Path<T>>(obj: T, key: TypeOrKey<P>) {
+  const paths = (key as string).split('.');
+  const nested = paths.length > 1 ? true : false;
+  const next = paths.shift();
+  let result = false;
+  if (!nested)
+    return Object.hasOwn(obj, key);
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === next) {
+      if (paths.length && typeof v === 'object' && v !== null && !Array.isArray(v)) {
+        return (hasProp as any)(v, paths.join('.'));
+      }
+    }
+  }
+  return result;
 }

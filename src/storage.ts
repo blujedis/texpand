@@ -20,11 +20,24 @@ async function updateStorage(keyOrSettings: keyof StorageSettings | Partial<Stor
   try {
     const current = await getStorage();
     let merged = {} as StorageSettings;
-
-    if (typeof keyOrSettings === 'string')
-      merged[keyOrSettings as any] = { ...(current[keyOrSettings] as Record<string, string>), ...(value || {}) };
-    else
+    const propValue = current[keyOrSettings as any];
+    // rather not include lib for merging probably sufficient for now.
+    // never more than one level deep, to merge nested array or object
+    // must specify the key and value of same type.
+    if (typeof keyOrSettings === 'string') {
+        if (Array.isArray(propValue)) {
+          merged[keyOrSettings as any] = [ ...propValue, ...(value || [])];
+        }
+        else if (typeof propValue === 'object' && propValue !== null ) {
+          merged[keyOrSettings as any] = { ...propValue, ...(value || {})};
+        }
+        else {
+          merged[keyOrSettings as any] = value;
+        }
+    }
+    else {
       merged = { ...current, ...obj }
+    }
     await chrome.storage.sync.set(merged);
     return merged;
   }
@@ -65,8 +78,3 @@ export default {
   update: updateStorage,
   upgrade: upgradeStorage
 };
-
-
-// function getStorage<K extends keyof StorageOptions>(key: K): Promise<StorageOptions[K]>;
-// function getStorage<K extends keyof StorageOptions>(keys: K[]): Promise<Record<K, StorageOptions[K]>>;
-// function getStorage(defaults?: StorageOptions): Promise<StorageOptions>;

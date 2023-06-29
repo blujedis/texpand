@@ -1,16 +1,26 @@
 import type { StorageSettings } from 'src/types';
 import Storage from '../storage';
 
-chrome.runtime.onInstalled.addListener((details) => {
-  console.log(details);
+let cache = {} as StorageSettings;
+
+
+
+function handleMessage(message: any, sender: chrome.runtime.MessageSender, send?: (response?: any) => void) {
+
+}
+
+function sendMessage(message: any, receive?: (response: any) => void) {
+  chrome.runtime.sendMessage(message, receive);
+}
+
+async function handleInstalled(details: chrome.runtime.InstalledDetails) {
   if (details.reason == 'install')
-    Storage.init();
+    cache = await Storage.init();
   else if (details.reason == 'update')
-    Storage.upgrade();
-});
+    cache = await Storage.upgrade();
+}
 
-chrome.storage.onChanged.addListener((changes: Record<keyof StorageSettings, chrome.storage.StorageChange>, area: 'sync' | 'local' | 'managed' | 'session' | 'help') => {
-
+function handleOnChanged(changes: Record<keyof StorageSettings, chrome.storage.StorageChange>, area: 'sync' | 'local' | 'managed' | 'session' | 'help') {
   // Dynamically changes the icon so you know Texpand is active, listening for shortcut codes.
   if (area === 'sync') {
     const changed = changes.active?.newValue !== changes.active?.oldValue;
@@ -31,32 +41,21 @@ chrome.storage.onChanged.addListener((changes: Record<keyof StorageSettings, chr
       chrome.action.setIcon({ path });
     }
   }
-});
+}
 
-// let settingsCache = {} as StorageSettings;
+function bindEvents() {
+  chrome.runtime.onMessage.addListener(handleMessage);
+  chrome.runtime.onInstalled.addListener(handleInstalled);
+  chrome.storage.onChanged.addListener(handleOnChanged);
+  chrome.runtime.onSuspend.addListener(unbindEvents);
+}
 
-// async function handleInit() {
-//   settingsCache = await Storage.init();
-// }
+function unbindEvents() {
+  chrome.runtime.onMessage.removeListener(handleMessage);
+  chrome.runtime.onInstalled.removeListener(handleInstalled);
+  chrome.storage.onChanged.removeListener(handleOnChanged);
+}
 
-// async function handleUpgrade() {
-//   settingsCache = await Storage.upgrade();
-// }
-
-
-// Only runs when there is no Popup Page
-// 
-// chrome.action.onClicked.addListener(async (tab) => {
-//   try {
-//     await Storage.init();
-//     console.log(`Initialized: tab ${tab.url} (${tab.id})`)
-//   } catch (e) {
-//     console.warn(`Failed Initialization: tab ${tab.url} (${tab.id})`);
-//     console.warn(e.message);
-//   }
-// });
+bindEvents();
 
 
-// chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-//   // sendResponse(`success!`);
-// });
