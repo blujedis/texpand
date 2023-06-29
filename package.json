@@ -11,7 +11,8 @@
         "dev": "vite",
         "build": "vite build && node ./bundler.cjs",
         "watch": "vite build --watch",
-        "check": "svelte-check --tsconfig ./tsconfig.json"
+        "check": "svelte-check --tsconfig ./tsconfig.json",
+        "test": "echo \"Error: no test specified\" && exit 1"
     },
     "devDependencies": {
         "@crxjs/vite-plugin": "2.0.0-beta.3",

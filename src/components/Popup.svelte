@@ -169,7 +169,7 @@ function resetSettings() {
 						size="{1}"
 						placeholder="ex: /" />
 					<p class="mt-2 text-sm text-slate-500" id="email-description">
-						Prepend shortcuts with this value when defined.
+						Auto prepend shortcuts with this value when defined.
 					</p>
 				</div>
 			</div>

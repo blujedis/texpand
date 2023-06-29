@@ -36,7 +36,7 @@ function hasMatch(key: string) {
 
 function setActivity(value: boolean) {
   return Storage.update({ active: value }).then(s => {
-    console.log('[TEXPAND]: active = ' + value);
+    console.log('[TEXPAND]:', value ? 'active' : 'inactive');
   });
 }
 
@@ -73,13 +73,26 @@ function replaceText({ e, buffer, value, lastChar }: { e: KeyboardEvent, buffer:
 }
 
 function handleKeypress(e: KeyboardEvent) {
-  if (e.ctrlKey && [settingsCache.settings.enableKey, settingsCache.settings.disableKey].includes(e.key as SpecialChar)) {
-    clearTimeout(timeoutid);
-    active = e.key === settingsCache.settings.enableKey ? true : e.key === settingsCache.settings.disableKey ? false : active;
-    setActivity(active);
-    if (active) initTimeout();
-  }
-  else if (active) {
+
+  // if (e.ctrlKey && [settingsCache.settings.enableKey, settingsCache.settings.disableKey].includes(e.key as SpecialChar)) {
+  //   clearTimeout(timeoutid);
+  // active = e.key === settingsCache.settings.enableKey ? true : e.key === settingsCache.settings.disableKey ? false : active;
+  //console.log(e.key)
+  // if (!active) {
+  //   buffer += e.key;
+  //   console.log(buffer)
+  //   if (buffer === '[[') {
+  //     active = true;
+  //     buffer = '';
+  //     replaceText({ e, buffer, value:'', lastChar: e.key})
+  //   }
+  //   else if (buffer.length > 1) {
+  //     buffer = '';
+  //   }
+  //   setActivity(active);
+  //   if (active) initTimeout();
+  // }
+  if (active) {
     if (hasPrefix(buffer) || hasPrefix(e.key)) {
       clearTimeout(timeoutid);
       buffer += e.key;
@@ -96,8 +109,18 @@ function handleKeypress(e: KeyboardEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (!active && e.repeat) return;
   if (active && e.key === 'Backspace')
     buffer = buffer.slice(0, -1);
+  else if (!active && e.ctrlKey && settingsCache.settings.enableKey === e.key) {
+    active = true;
+    setActivity(true);
+    initTimeout();
+  }
+  else if (active && e.ctrlKey && settingsCache.settings.disableKey === e.key) {
+    setActivity(false);
+    clearTimeout(timeoutid);
+  }
 }
 
 function handleStorageChanged(changes: Record<keyof StorageSettings, chrome.storage.StorageChange>, area: 'sync' | 'local' | 'managed' | 'session' | 'help') {
@@ -134,6 +157,8 @@ function init() {
   else
     bindEvents();
 }
+
+console.log('hello world')
 
 init();
 
