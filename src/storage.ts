@@ -1,5 +1,9 @@
-import type { StorageSettings } from './types';
+import type { Expander, StorageSettings } from './types';
 import defaults, { updateDefaults } from './defaults';
+import { writable } from 'svelte/store';
+import { ensureArray } from './utils';
+
+const store = writable({ ...defaults });
 
 // Simply perform a get with complete settings object.
 async function initStorage() {
@@ -12,34 +16,41 @@ function getStorage(defaults?: StorageSettings): Promise<StorageSettings>;
 function getStorage(keysOrDefaults?: keyof StorageSettings | (keyof StorageSettings)[] | StorageSettings) {
   return chrome.storage.sync.get(keysOrDefaults);
 }
+async function updateStorage(key: keyof StorageSettings, value?: any, replace?: boolean): Promise<StorageSettings>;
+async function updateStorage(obj: Partial<StorageSettings>, replace?: boolean): Promise<StorageSettings>;
+async function updateStorage(keyOrObject: keyof StorageSettings | Partial<StorageSettings>, value?: any, replace?: boolean) {
 
-async function updateStorage(key: keyof StorageSettings, value: any): Promise<StorageSettings>;
-async function updateStorage(settings: Partial<StorageSettings>): Promise<StorageSettings>;
-async function updateStorage(keyOrSettings: keyof StorageSettings | Partial<StorageSettings>, value?: any) {
-  let obj = keyOrSettings as Partial<StorageSettings>;
   try {
-    const current = await getStorage();
-    let merged = {} as StorageSettings;
-    const propValue = current[keyOrSettings as any];
-    // rather not include lib for merging probably sufficient for now.
-    // never more than one level deep, to merge nested array or object
-    // must specify the key and value of same type.
-    if (typeof keyOrSettings === 'string') {
-        if (Array.isArray(propValue)) {
-          merged[keyOrSettings as any] = [ ...propValue, ...(value || [])];
-        }
-        else if (typeof propValue === 'object' && propValue !== null ) {
-          merged[keyOrSettings as any] = { ...propValue, ...(value || {})};
-        }
-        else {
-          merged[keyOrSettings as any] = value;
-        }
+
+    let current = await getStorage();
+
+    if (typeof keyOrObject === 'object') {
+      current = { ...current, ...(keyOrObject || {}) }
     }
-    else {
-      merged = { ...current, ...obj }
+    else if (typeof keyOrObject === 'string' && typeof value !== 'undefined') {
+
+      const currentValue = current[keyOrObject];
+      if (keyOrObject === 'expanders' && Array.isArray(currentValue)) {
+        const newValue = ensureArray(value, []) as Expander[];
+        const filtered = newValue.filter(exp => {
+          return !currentValue.some(cExp => exp.code === cExp.code);
+        });
+        current[keyOrObject] = replace ? (value || []) : [...currentValue, ...filtered];
+      }
+      else if (typeof currentValue === 'object' && currentValue !== null) {
+        current[keyOrObject] = replace ? (value || {}) : { ...currentValue, ...(value || {}) };
+      }
+      else {
+        if (typeof value !== 'object')
+          current[keyOrObject] = value;
+      }
     }
-    await chrome.storage.sync.set(merged);
-    return merged;
+
+    await chrome.storage.sync.set(current);
+    store.update(() => current);
+
+    return current;
+
   }
   catch (ex) {
     console.warn(ex.message);
@@ -50,6 +61,9 @@ async function updateStorage(keyOrSettings: keyof StorageSettings | Partial<Stor
 async function setStorage(settings: StorageSettings) {
   try {
     await chrome.storage.sync.set(settings);
+    store.update(() => {
+      return settings;
+    });
     return settings;
   }
   catch (ex) {
@@ -63,6 +77,9 @@ async function upgradeStorage() {
     const current = await chrome.storage.sync.get() as StorageSettings;
     const updated = updateDefaults(current);
     await setStorage(updated);
+    store.update(() => {
+      return updated;
+    });
     return updated;
   }
   catch (ex) {
@@ -71,8 +88,12 @@ async function upgradeStorage() {
   }
 }
 
+store.set = setStorage;
+
 export default {
+  ...store,
   init: initStorage,
+  subscribe: store.subscribe,
   get: getStorage,
   set: setStorage,
   update: updateStorage,

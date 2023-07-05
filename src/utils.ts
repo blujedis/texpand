@@ -1,8 +1,10 @@
 import { writable } from 'svelte/store';
-import type { Path, PickDeep, PrimitiveValue, RecordDeepSingle, TabName, TableColumnType, TableRow, TypeOrKey } from './types';
-import defaults from './defaults';
+import splitString from 'split-string';
+import type { Expander, Path, PickDeep, RecordInto, TabName, TableColumn, TableColumnType, TableRow, TypeOrKey } from './types';
 
-const splitExp = /,(?=(?:(?:[^"']*["']){2})*[^"']*$)/;
+// export const splitByComma = /,(?=(?:(?:[^"']*["']){2})*[^"']*$)/;
+
+// export const splitBySpace = /\s(?=(?:(?:[^"']*["']){2})*[^"']*$)/;
 
 export const specialChars = [
   '`', '~', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '_', '+', '=',
@@ -11,47 +13,86 @@ export const specialChars = [
 
 export const specialCharsExp = /^[`!@#$%^&*()_+\-=\[\]{};:\\|,.<>\/?~]/;
 
+const expanderTypeMap = {
+  code: 'display',
+  expanded: 'textarea',
+  tags: 'badges'
+} as Record<keyof Expander, TableColumnType>;
 
-const tabStore = writable('home' as TabName);
+export const expanderKeys = Object.keys(expanderTypeMap);
+
+const tabStore = writable('list' as TabName);
 
 export const tab = {
   ...tabStore,
   change: (name: TabName) => tabStore.update(s => name),
 };
 
-export function log(type?: 'log' | 'warn' | 'error' | 'debug', ...message: any[]) {
-  console[type](...message);
+export function log(type: 'log' | 'debug' | 'info' | 'warn' | 'error', message: any, ...messages: any[])
+export function log(message: any,...messages: any[])
+export function log(type?: any, message?: any, ...messages: any[]) {
+  if (typeof type === 'undefined') 
+    return console.log();
+  const isMethod = ['log', 'error', 'warn', 'info', 'debug'].includes(type);
+  if (!isMethod) {
+    message = `[TEXPAND]:` + ' ' + message;
+    messages.unshift(message);
+    messages.unshift(type);
+    type = 'log';
+  }
+  else {
+    message = `[TEXPAND]:` + ' ' + message;
+    messages.unshift(message);
+  }
+  console[type](...messages);
 }
 
-export function expandersToRows(obj: Record<string, any>) {
-  return Object.entries(obj).reduce((a, [key, value]) => {
-    const row = [
-      { name: 'key', value: key, type: 'display' as TableColumnType },
-      { name: 'value', value: value, type: 'textarea' as TableColumnType },
-    ];
-    a.push(row);
-    return a;
-  }, [] as TableRow[]);
+export function ensureArray(value: unknown, def = [] as any[]) {
+  if (typeof value === 'undefined' || value === null || Array.isArray(value))
+    return value || def;
+  if (!Array.isArray(value))
+    value = [value];
+  return value;
 }
 
-export function rowToExpandersObject(rows: TableRow[]) {
-  const obj = {} as Record<string, PrimitiveValue>;
-  rows.forEach(r => {
-    const [k, v] = r;
-    obj[k.value + ''] = v.value
+export function expandersToTableRows(expanders = [] as Expander[]) {
+  return expanders.map(exp => {
+    const row = [] as TableColumn[];
+    for (const [key, val] of Object.entries(exp)) {
+      row.push({
+        name: key,
+        value: val,
+        type: expanderTypeMap[key],
+        items: [],
+      } as TableColumn);
+    }
+    return row;
   });
-  return obj;
+}
+
+export function tableToExpanderRows(rows: TableRow[]) {
+  const newRows = [] as any[];
+  rows.forEach((row) => {
+    const newRow = {} as any;
+    row.forEach(({ name, value }) => {
+      expanderKeys.forEach((k) => {
+        if (name === k) newRow[k] = value;
+      });
+    });
+    newRows.push(newRow);
+  });
+  return newRows;
 }
 
 // First header should be the top level key for each item. 
-function objToCSV(obj: Record<string, any>, headers?: string[] | null) {
-  if (typeof headers === 'undefined')
-    headers = ['code', 'expanded'];
-  let csv = !headers ? '' : headers.join(',');
+function objToCSV(obj: Record<string, any>, headers = true) {
+  let csv = !headers ? '' : expanderKeys.join(',');
   for (const [key, value] of Object.entries(obj)) {
     let normalValue = value;
+    if (Array.isArray(value))
+      normalValue = value.join(' ');
     if (value.includes(','))
-      normalValue = '"' + value + '"';
+      normalValue = '"' + value +'"';
     csv += '\r\n' + key + ',' + normalValue;
   }
   return csv;
@@ -61,22 +102,32 @@ function arrayToCSV(arr: Record<string, any>[], headers = true) {
   const keys = Object.keys(arr[0]);
   let csv = headers ? keys.join(',') : '';
   arr.forEach(v => (csv += '\r\n' + Object.values(v).map(v => {
+    if (Array.isArray(v))
+      v = v.join(' ');
     if (v.includes(','))
-      v = "'" + v + "'";
+      v = '"'+ v + '"';
     return v;
   }).join(',')));
   return csv;
 }
 
-export function csvToObj(str: string, headers = true) {
+export function csvToRows(str: string) {
   const rows = str.split(/\r\n/);
-  const header = headers ? rows.shift() : rows;
-  const obj = {} as Record<string, string>;
-  rows.forEach(row => {
-    const cols = row.split(splitExp);
-    obj[cols[0]] = cols[1];
-  });
-  return obj;
+  const keys = splitString(rows.shift(), { separator: ',' })
+  return rows.reduce((result, cols) => {
+    const split = splitString(cols, { separator: ',' });
+    const row = {} as Expander;
+    keys.forEach((k, i) => {
+      let val = split[i] as any;
+      if (val.includes(',')) {
+        val = splitString(val, { separator: ',' });
+        val = val.map(v => v.replace(/^("|')/, '').replace(/('|")$/, ''));
+      }
+      row[k] = k === 'tags' ? (val || '').split(' ') : val;
+    });
+    result.push(row);
+    return result;
+  }, [] as Expander[]);
 }
 
 export function createDownloadLink(filename: string, data: Record<string, any> | any[], type = 'csv' as 'csv' | 'json') {
@@ -147,7 +198,7 @@ export function getProp<T extends Record<string, any>, P extends Path<T>>(obj: T
   return result;
 }
 
-export function setProp<T extends Record<string, any>, P extends Path<T>, V>(obj: T, key: TypeOrKey<P>, value: any): T & RecordDeepSingle<Extract<P, string>, V> {
+export function setProp<T extends Record<string, any>, P extends string, V>(obj: T, key: TypeOrKey<P>, value: V): T & RecordInto<Extract<P, string>, V> {
   const paths = (key as string).split('.');
   const next = paths.shift();
   for (const [k, v] of Object.entries(obj)) {
@@ -156,13 +207,13 @@ export function setProp<T extends Record<string, any>, P extends Path<T>, V>(obj
         return (setProp as any)(obj[k], paths.join(), value);
       }
       else {
-        obj[k as P] = value;
+        obj[k as P] = value as any;
         return obj as any;
       }
     }
     else {
       if (!paths.length) {
-        obj[next as P] = value;
+        obj[next as P] = value as any;
         return obj as any;
       }
       else {
@@ -174,8 +225,6 @@ export function setProp<T extends Record<string, any>, P extends Path<T>, V>(obj
   }
   return obj as any;
 }
-
-const tmp = setProp(defaults, 'settings.other', 'temp')
 
 export function hasProp<T extends Record<string, any>, P extends Path<T>>(obj: T, key: TypeOrKey<P>) {
   const paths = (key as string).split('.');

@@ -7,29 +7,4 @@
             "url": "https://json.schemastore.org/chrome-manifest.json"
         }
     ],
-    "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true,
-        "**/Thumbs.db": true,
-        "**/dist": true,
-        "**/node_modules": true,
-        "**/.vscode": true,
-        "**/.github": true,
-        "**/tailwind.config.js": true,
-        "**/package-lock.json": true,
-        "**/pnpm-lock.yaml": true,
-        "**/.prettierrc": true,
-        "**/postcss.config.js": true,
-        "**/README.md": true,
-        "**/svelte.config.js": true,
-        "**/tsconfig.json": true,
-        "**/tsconfig.node.json": true,
-        "**/vite.config.ts": true,
-        "**/vite-env.d.ts": true,
-        "*.gitignore": true
-    },
-    "explorerExclude.backup": {}
 }

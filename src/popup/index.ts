@@ -5,12 +5,12 @@ import '../styles.css';
 const target = document.getElementById('app');
 
 async function render() {
-  let result = await Storage.get();
-  await Storage.update({ active: false });
-  new Popup({ 
-    target, 
-    props: { active: result.active, expanders: result.expanders, settings: result.settings } 
-  })
+  const storage = await Storage.get();
+  await Storage.update({ active: false});
+  new Popup({
+    target,
+    props: {}
+  });
 }
 
 document.addEventListener('DOMContentLoaded', render);

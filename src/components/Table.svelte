@@ -8,31 +8,33 @@
 </style>
 
 <script lang="ts">
-import type { ElementProps, TableMeta, TableRow } from 'src/types';
+import type { ElementProps, Expander, TableColumn, TableHeader, TableMeta, TableRow } from 'src/types';
 import Button from './Button.svelte';
-import { writable } from 'svelte/store';
+import { writable, type Unsubscriber } from 'svelte/store';
 import Alert from './Alert.svelte';
-import Storage from 'src/storage';
+import Storage from '../storage';
+import splitString from 'split-string';
 import {
 	createDownloadLink,
-	csvToObj,
-	expandersToRows,
+	csvToRows,
+	expandersToTableRows,
 	fileReader,
-	rowToExpandersObject,
-	tab
+	tab,
+	tableToExpanderRows
 } from 'src/utils';
 
 type $$Props = ElementProps<'button'> & {
 	title?: string;
 	description?: string;
 	keyprop?: string;
-	headers: string[];
+	headers: TableHeader[];
 	rows: TableRow[];
 	editable?: boolean;
 	deleteable?: boolean;
 	selectable?: boolean;
 	filterable?: boolean;
-	onSave?: (rows: TableRow[], meta: TableMeta) => void | Promise<void>;
+	showTags?: boolean;
+	onSave: (rows: TableRow[], meta: TableMeta) => void | Promise<void>;
 };
 
 const noop = (rows: TableRow[], meta: TableMeta) => {};
@@ -47,28 +49,52 @@ export let {
 	rows,
 	selectable,
 	filterable,
-	onSave
+	onSave,
+	showTags
 } = {
-	keyprop: 'key',
+	keyprop: 'code',
 	headers: [],
 	rows: [],
-	onSave: noop
+	onSave: noop,
+	showTags: true
 } as Required<$$Props>;
 
 let alert: Alert;
 let notice: Alert;
 let importer: HTMLInputElement;
+let search: string;
+
+type StoreValue = {
+	rows: TableRow[];
+	modified: string[];
+	removed: string[];
+	selected: string[];
+	editing?: TableRow;
+	tags: string[];
+};
 
 export const store = writable({
-	rows: [...rows],
-	modified: [] as string[],
-	removed: [] as string[],
+	rows: [...rows].reduce((a, c) => {
+		const row = [] as TableRow;
+		c.forEach((col) => {
+			const idx = headers.findIndex((h) => h.name === col.name);
+			if (idx >= 0) row[idx] = col;
+		});
+		a.push(row);
+		return a;
+	}, [] as TableRow[]),
 	selected: [] as string[],
-	editing: undefined as TableRow
+	editing: undefined as TableRow,
+	tags: [] as string[]
 });
 
 $: isSelectedAll = $store.selected.length === $store.rows.length;
 $: isIndeterminate = $store.selected.length > 0 && $store.selected.length !== $store.rows.length;
+$: uniqueTags = rows.reduce((utags, r) => {
+	const rtags = (r.find((col) => col.name === 'tags') || ({ value: [] } as TableColumn)).value || [];
+	const current = rtags.filter((t) => !utags.includes(t));
+	return [...utags, ...current];
+}, [] as string[]);
 
 function getRowKey(row: TableRow) {
 	if (!row) return '';
@@ -114,7 +140,11 @@ export function remove(...rows: TableRow[]) {
 			const keys = getKeys(rows);
 			store.update((s) => {
 				const newRows = s.rows.filter((r) => !keys.includes(getRowKey(r)));
-				return { ...s, rows: newRows, removed: [...s.removed, ...keys] };
+				onSave(newRows, {
+					modified: 0,
+					removed: keys.length
+				});
+				return { ...s, rows: newRows  };
 			});
 		}
 	});
@@ -139,61 +169,51 @@ export function unedit() {
 	});
 }
 
+function getFilteredRows(query = '') {
+	const queries = splitString(query.trim())
+		.map((q) => q.split(' '))
+		.flat()
+		.filter((q) => typeof q !== 'undefined');
+	return !queries?.length
+		? [...rows]
+		: rows.filter((row) => {
+				return row.some((col) => {
+					const normalized = (
+						(Array.isArray(col.value) ? col.value.join(' ') : col.value + '') || ''
+					).toLowerCase();
+					return queries.some((q) => normalized.includes(q.toLowerCase()));
+				});
+		  });
+}
+
 export function filter(query = '') {
 	store.update((s) => {
-		if (!query) return { ...s, rows: [...rows] };
-		const filtered = s.rows.filter((row) => {
-			return row.some((col) => (col.value + '').toLowerCase().includes(query.toLowerCase()));
-		});
-		return { ...s, rows: filtered };
+		return { ...s, rows: getFilteredRows([query, ...s.tags].join(' ')) };
 	});
 }
 
-function updateValue(name: string, value: any) {
-	if (!$store.editing) return;
-	$store.editing.forEach((c) => {
-		if (c.name === name) c.value = value;
-		return c;
-	});
+export function resetFilter() {
 	store.update((s) => {
-		return { ...s };
+		search = '';
+		return { ...s, tags: [], rows: [...rows] };
 	});
 }
 
-function updateModified(...key: string[]) {
+export function toggleTag(value: string) {
 	store.update((s) => {
-		return { ...s, modified: [...s.modified, ...key] };
+		let newTags = [];
+		if (value === 'all') {
+			if (!s.tags.includes('all')) newTags = [...uniqueTags, 'all'];
+		} else {
+			newTags = s.tags.includes(value) ? s.tags.filter((t) => t !== value) : [...s.tags, value];
+		}
+		const filtered = getFilteredRows([search || '', ...newTags].join(' '));
+		if (newTags.length < uniqueTags.length + 1) newTags = newTags.filter((t) => t !== 'all');
+		return { ...s, rows: filtered, tags: newTags };
 	});
 }
 
-function saveRow() {
-	store.update((s) => {
-		if (s.editing) s.modified.push(getRowKey(s.editing));
-		s.rows.reduce((a, c) => {
-			if (getRowKey(c) === getRowKey(s.editing))
-				c.forEach((o) => {
-					s.editing.forEach((col) => {
-						if (o.name === col.name) o.value = col.value;
-					});
-				});
-			else a.push(c);
-			return a;
-		}, [] as TableRow[]);
-		return { ...s, editing: undefined };
-	});
-}
-
-function save() {
-	if (onSave)
-		onSave($store.rows, {
-			source: rows,
-			selected: $store.selected,
-			modified: $store.modified,
-			removed: $store.removed
-		});
-}
-
-function toggleAll(
+export function toggleAllRows(
 	e: Event & {
 		currentTarget: EventTarget & HTMLInputElement;
 	}
@@ -204,53 +224,34 @@ function toggleAll(
 		unselectAll();
 	}
 }
-function exportRows(type = 'csv' as 'csv' | 'json') {
+
+export function exportRows(type = 'csv' as 'csv' | 'json') {
 	let filtered = $store.rows;
 	if ($store.selected.length) filtered = $store.rows.filter((r) => $store.selected.includes(getRowKey(r)));
-	createDownloadLink(`texpand.${type}`, rowToExpandersObject(filtered), type);
+	const exportedRows = tableToExpanderRows(filtered);
+	createDownloadLink(`texpand.${type}`, exportedRows, type);
 }
-function importRows(type = 'csv' as 'csv' | 'json') {
+
+export async function importRows(type = 'csv' as 'csv' | 'json') {
 	fileReader(importer.files[0])
 		.then((str) => {
-			const result = (type === 'csv' ? csvToObj(str) : JSON.parse(str)) as Record<string, string>;
+			const result = (type === 'csv' ? csvToRows(str) : JSON.parse(str)) as Expander[];
 			const rowKeys = getKeys($store.rows);
-			const imports = [] as string[];
 			const dupes = [] as string[];
-			const deduped = Object.keys(result)
-				.filter((k) => {
-					if (rowKeys.includes(k)) dupes.push(k);
-					else {
-						imports.push(k);
-					}
-					return !rowKeys.includes(k);
-				})
-				.reduce((a, c) => {
-					a[c] = result[c];
-					return a;
-				}, {} as any);
+			const imports = result.filter((row) => {
+				if (rowKeys.includes(row.code)) dupes.push(row.code);
+				return !rowKeys.includes(row.code);
+			});
 			if (imports.length) {
-				expandersToRows(deduped).forEach((r) => add(r));
-				// Storage.get('expanders').then((obj) => {
-				// 	const newExpanders = { ...obj.expanders, ...deduped };
-				// 	console.log(newExpanders);
-					Storage.update('expanders', deduped).then(v => console.log(v.expanders))
-				//});
-				notice.open(
-					`${imports.length} code(s) imported ${dupes.length} were duplicates and ignored`,
-					'success'
-				);
-				// new codes found update
-				// Storage.update('expanders', deduped)
-				// 	.then((res) => {
-				// 		expandersToRows(deduped).forEach((r) => add(r));
-				// 		notice.open(
-				// 			`${imports.length} code(s) imported ${dupes.length} were duplicates and ignored`,
-				// 			'success'
-				// 		);
-				// 	})
-				// 	.catch((ex) => {
-				// 		console.warn(ex.message);
-				// 	});
+				Storage.update('expanders', imports).then((s) => {
+					store.update((s) => {
+						return { ...s, rows: [...s.rows, ...expandersToTableRows(imports)] };
+					});
+					notice.open(
+						`${imports.length} code(s) imported ${dupes.length} were duplicates and ignored`,
+						'success'
+					);
+				});
 			} else {
 				notice.open(`${imports.length} code(s) imported ${dupes.length} were duplicates and ignored`);
 			}
@@ -259,6 +260,62 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 			console.log('[TEXPAND]:', e);
 			notice.open(`Error importing rows.`, 'danger');
 		});
+}
+
+function updateValue(name: string, value: any) {
+	if (!$store.editing) return;
+	$store.editing.forEach((c) => {
+		if (c.name === name) c.value = value;
+	});
+	store.update((s) => {
+		return { ...s };
+	});
+}
+
+function saveRow() {
+	store.update((s) => {
+		const editRow = s.editing;
+		s.rows.forEach((r) => {
+			if (getRowKey(r) === getRowKey(editRow)) {
+				r.forEach((rCol) => {
+					editRow.forEach((col) => {
+						if (rCol.name === col.name) {
+							rCol.value = col.value;
+						}
+					});
+				});
+			}
+		});
+		onSave(s.rows, {
+			modified: 1,
+			removed: 0
+		});
+		return { ...s, editing: undefined };
+	});
+}
+
+// function save() {
+// 	if ($store.editing)
+// 		return alert.open(`A row is being edited, please save or cancel before saving changes.`, 'warning');
+// 	if (onSave)
+// 		onSave($store.rows, {
+// 			source: rows,
+// 			selected: $store.selected,
+// 			modified: $store.modified,
+// 			removed: $store.removed
+// 		});
+// }
+
+function handleSubmitBadges(
+	e: Event & { readonly submitter: HTMLElement } & { currentTarget: EventTarget & HTMLFormElement },
+	currentValue?: any
+) {
+	e.preventDefault();
+	const formData = new FormData(e.currentTarget);
+	for (const [k, v] of formData.entries()) {
+		updateValue(k, [...currentValue, v]);
+	}
+	e.currentTarget.reset();
 }
 </script>
 
@@ -283,12 +340,40 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 		{/if}
 		{#if filterable}
 			<div class="mb-2">
-				<input
-					id="search"
-					type="text"
-					class="block w-full focus-visible:outline-none focus:outline-none rounded-none border-b py-1.5 text-gray-900 shadow-sm placeholder:text-gray-400 text-sm focus:ring-0"
-					on:input="{(e) => filter(e.currentTarget.value || '')}"
-					placeholder="Search Filter" />
+				<div class="flex items-end">
+					<input
+						bind:value="{search}"
+						id="search"
+						type="text"
+						class="block w-full focus-visible:outline-none focus:outline-none rounded-none border-b py-1.5 text-gray-900 shadow-sm placeholder:text-gray-400 text-sm focus:ring-0 flex-1"
+						on:input="{(e) => filter(e.currentTarget.value || '')}"
+						placeholder="Search Filter" />
+					<div>
+						<button
+							class="text-indigo-600 hover:text-indigo-500 appearance-none pl-6"
+							on:click="{resetFilter}">Reset</button>
+					</div>
+				</div>
+			</div>
+		{/if}
+		{#if showTags}
+			<div class="mb-4">
+				{#each uniqueTags as tag}
+					<button on:click="{(e) => toggleTag(tag)}">
+						<span
+							aria-checked="{$store.tags.includes(tag)}"
+							class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10 mr-1 aria-checked:bg-indigo-500 aria-checked:text-white hover:bg-indigo-100/90">
+							{tag}
+						</span>
+					</button>
+				{/each}
+				<button on:click="{(e) => toggleTag('all')}">
+					<span
+						aria-checked="{$store.tags.includes('all')}"
+						class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10 mr-1 aria-checked:bg-indigo-500 aria-checked:text-white hover:bg-indigo-100/90">
+						all
+					</span>
+				</button>
 			</div>
 		{/if}
 		<div class="flow-root bg-white">
@@ -300,26 +385,26 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 								{#if selectable}
 									<th
 										scope="col"
-										class="sticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 text-left text-sm font-semibold text-gray-900 backdrop-blur backdrop-filter">
+										class="text-leftsticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 text-left text-sm font-semibold text-gray-900 backdrop-blur backdrop-filter">
 										<input
 											type="checkbox"
 											class="rounded-sm border-slate-400"
-											on:click="{(e) => toggleAll(e)}"
+											on:click="{(e) => toggleAllRows(e)}"
 											checked="{isSelectedAll}"
 											indeterminate="{isIndeterminate}" />
 									</th>
 								{/if}
-								{#each headers as hdr, i}
+								{#each headers as hdr}
 									<th
 										scope="col"
-										class="sticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 text-left text-sm font-semibold text-gray-900 backdrop-blur backdrop-filter"
-										>{hdr}</th>
+										class="text-left sticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 text-left text-sm font-semibold text-gray-900 backdrop-blur backdrop-filter break-normal"
+										>{hdr.label}</th>
 								{/each}
 
 								{#if editable || deleteable}
 									<th
 										scope="col"
-										class="sticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 backdrop-blur backdrop-filter">
+										class="text-left sticky top-0 border-b z-10 border-gray-300 bg-slate-50 bg-opacity-75 py-2 px-3 pt-3 backdrop-blur backdrop-filter">
 										<span class="sr-only">Actions</span>
 									</th>
 								{/if}
@@ -330,7 +415,7 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 								<tr>
 									{#if selectable}
 										<td
-											class="align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500">
+											class="text-left align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500">
 											<input
 												type="checkbox"
 												class="rounded-sm border-slate-400"
@@ -342,38 +427,101 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 									{#each row as col, n}
 										{#if $store.editing && getRowKey($store.editing) === getRowKey(row)}
 											<td
-												class="align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500">
-												{#if col.type === 'input'}
+												class="text-left align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500 break-normal">
+												{#if col?.type === 'input'}
 													<input
 														type="text"
 														value="{col.value}"
 														size="{1}"
 														class="text-sm w-auto min-w-[90px]"
 														on:change="{(e) => updateValue(col.name, e.currentTarget.value)}" />
-												{:else if col.type === 'textarea'}
+												{:else if col?.type === 'textarea'}
 													<textarea
 														class="text-sm"
 														rows="{1}"
 														on:change="{(e) => updateValue(col.name, e.currentTarget.value)}"
 														>{col.value}</textarea>
+												{:else if col?.type === 'select' || col.type === 'select.multiple'}
+													<select
+														multiple="{col.type === 'select.multiple'}"
+														on:change="{(e) => updateValue(col.name, e.currentTarget.value)}">
+														{#each col.items || [] as opt}
+															<option value="{opt?.value}">{opt.label || opt?.value + ''}</option>
+														{/each}
+													</select>
+												{:else if col?.type === 'badges'}
+													{#each col.value as val}
+														<span
+															class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10 mr-1">
+															{val}
+															<button
+																on:click="{() =>
+																	updateValue(
+																		col.name,
+																		col.value.filter((v) => v !== val)
+																	)}">
+																<svg
+																	xmlns="http://www.w3.org/2000/svg"
+																	fill="none"
+																	viewBox="0 0 24 24"
+																	stroke-width="1.5"
+																	stroke="currentColor"
+																	class="w-4 h-4">
+																	<path
+																		stroke-linecap="round"
+																		stroke-linejoin="round"
+																		d="M6 18L18 6M6 6l12 12"></path>
+																</svg>
+															</button>
+														</span>
+													{/each}
+													<form on:submit="{(e) => handleSubmitBadges(e, col.value)}" class="mr-1">
+														<input
+															name="{col.name}"
+															type="text"
+															class="mt-1 text-sm w-auto min-w-[90px] px-1 py-1" />
+														<button type="submit">
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																fill="none"
+																viewBox="0 0 24 24"
+																stroke-width="1.5"
+																stroke="currentColor"
+																class="w-5 h-5">
+																<path
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																	d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+															</svg>
+														</button>
+													</form>
+												{:else if typeof col?.formatter === 'function'}
+													{col.formatter(col.value)}
 												{:else}
-													<td
-														class="align-top whitespace-nowrap border-none border-gray-200 px-3 py-1.5 text-sm text-gray-500"
-														>{col.value}
-													</td>
+													{col.value}
 												{/if}
 											</td>
 										{:else}
 											<td
-												class="align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500"
-												>{col.value}
+												class="text-left align-top whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-sm text-gray-500 break-normal">
+												{#if typeof col?.formatter === 'function'}
+													{col.formatter(col.value)}
+												{:else if col?.type === 'badges' && Array.isArray(col.value)}
+													{#each col?.value as val}
+														<span
+															class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10 mr-1"
+															>{val}</span>
+													{/each}
+												{:else}
+													{col?.value}
+												{/if}
 											</td>
 										{/if}
 									{/each}
 
 									{#if editable || deleteable}
 										<td
-											class="align-top relative whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-right text-sm font-medium">
+											class="text-left align-top relative whitespace-nowrap border-b border-gray-200 px-3 py-1.5 text-right text-sm font-medium">
 											{#if $store.editing && getRowKey($store.editing) === getRowKey(row)}
 												<Button variant="icon" theme="danger" icon="cancel" on:click="{unedit}" />
 												<Button variant="icon" theme="success" icon="save" on:click="{() => saveRow()}" />
@@ -409,7 +557,11 @@ function importRows(type = 'csv' as 'csv' | 'json') {
 				</div>
 				<div>
 					<Button theme="success" icon="add" on:click="{() => tab.change('add')}">New</Button>
-					<Button theme="primary" on:click="{() => save()}" icon="save">Save Changes</Button>
+					<!-- <Button
+						theme="primary"
+						on:click="{() => save()}"
+						icon="save"
+						disabled="{Array.isArray($store.editing)}">Save Changes</Button> -->
 				</div>
 			</div>
 		</div>

@@ -1,64 +1,71 @@
 <script lang="ts">
 import Table from './Table.svelte';
-import { expandersToRows, rowToExpandersObject } from 'src/utils';
+import { expandersToTableRows, tableToExpanderRows } from 'src/utils';
 import Container from './Container.svelte';
 import Alert from './Alert.svelte';
 import Storage from '../storage';
-import type { StorageSettings, TableMeta, TableRow } from 'src/types';
+import type { Expander, TableMeta, TableRow } from 'src/types';
 import { tab, specialCharsExp } from 'src/utils';
 import Button from './Button.svelte';
-import { onMount } from 'svelte';
-
-export let active = false;
-export let settings = {} as StorageSettings['settings'];
-export let expanders = {} as StorageSettings['expanders'];
+import { writable } from 'svelte/store';
 
 let alert: Alert;
 let table: Table;
 let container: Container;
 
-let key = '';
+let code = '';
 let expanded = '';
+let newTag = '';
 
-let timeout = settings.timeout;
-let casesensitive = settings.casesensitive;
-let prefixKey = settings.prefixKey;
-let disableKey = settings.disableKey;
-let enableKey = settings.enableKey;
+const tagStore = writable([] as string[]);
 
-async function onSave(rows: TableRow[], meta: TableMeta) {
-	if (!meta.modified.length && !meta.removed.length)
-		return alert.open(`Exiting, no records modified or removed.`, 'warning');
-	const result = await Storage.update('expanders', rowToExpandersObject(rows));
-	alert.open(`${meta.modified.length} records were updated, ${meta.removed.length} were removed.`, 'success');
+let timeout = $Storage.settings.timeout;
+let casesensitive = $Storage.settings.casesensitive;
+let prefixKey = $Storage.settings.prefixKey;
+let disableKey = $Storage.settings.disableKey;
+let enableKey = $Storage.settings.enableKey;
+
+async function onSaveTable(rows: TableRow[], meta: TableMeta) {
+	if (!meta.modified && !meta.removed)
+		return alert.open(`Exiting, no records were modified or removed.`, 'warning');
+	const result = await Storage.update('expanders', tableToExpanderRows(rows), true);
+	if (result)
+		alert.open(
+			`${meta.modified} records were updated, ${meta.removed} were removed.`,
+			'success'
+		);
+	else alert.open(`Save failed, please try again or contact support.`, 'warning');
 }
 
 async function saveNew() {
-	if (!key || !expanded) return alert.open('Add failed missing Code or Expanded value.', 'danger');
-	if (settings.prefixKey && !specialCharsExp.test(key))
+	if (!code || !expanded) return alert.open('Add failed missing Code or Expanded value.', 'danger');
+	if ($Storage.settings.prefixKey && !specialCharsExp.test(code)) code = $Storage.settings.prefixKey + code;
+	if ($Storage.settings.prefixKey && !specialCharsExp.test(code))
 		// if defined auto prefix with desired char.
-		key = settings.prefixKey + key;
-	if (!specialCharsExp.test(key))
-		return alert.open(`Key code must begin with a special character but got "${key.charAt(0)}"`, 'danger');
-	const obj = { [key]: expanded };
-	const result = await Storage.update('expanders', { ...expanders, ...obj });
-	if (result) expanders = result.expanders;
-	else return alert.open('An error occurred please try again or contact support.', 'danger');
-	tab.change('home');
+		code = $Storage.settings.prefixKey + code;
+	if (!specialCharsExp.test(code))
+		return alert.open(`Key code must begin with a special character but got "${code.charAt(0)}"`, 'danger');
+	const obj = { code, expanded, tags: $tagStore } as Expander;
+	const result = await Storage.update('expanders', obj);
+	console.log('result', result);
+	if (!result) return alert.open('An error occurred please try again or contact support.', 'danger');
+	tab.change('list');
+	alert.open(`Successuflly added new code ${code}.`, 'success');
 }
 
 function resetNew() {
-	key = '';
+	code = '';
 	expanded = '';
+	newTag = '';
+	tagStore.set([]);
 }
 
 async function saveSettings() {
 	if (!enableKey || !disableKey)
 		return alert.open('Save failed missing one of the following required fields [enableKey, disabledKey]');
-	const obj = { casesensitive, enableKey, disableKey };
-	const result = await Storage.update('settings', { ...settings, ...obj });
+	const obj = { casesensitive, enableKey, disableKey, timeout };
+	const result = await Storage.update('settings', { ...$Storage.settings, ...obj });
 	if (result) {
-		settings = { ...settings, casesensitive, disableKey, enableKey };
 		alert.open('Settings successfully saved.', 'success');
 	} else {
 		alert.open('An error occurred please try again or contact support.', 'danger');
@@ -66,33 +73,36 @@ async function saveSettings() {
 }
 
 function resetSettings() {
-	timeout = settings.timeout;
-	casesensitive = settings.casesensitive;
-	prefixKey = settings.prefixKey;
-	enableKey = settings.enableKey;
-	disableKey = settings.disableKey;
+	timeout = $Storage.settings.timeout;
+	casesensitive = $Storage.settings.casesensitive;
+	prefixKey = $Storage.settings.prefixKey;
+	enableKey = $Storage.settings.enableKey;
+	disableKey = $Storage.settings.disableKey;
 }
-
 </script>
 
-<Container bind:this="{container}" active>
-	{#if $tab === 'home'}
+<Container bind:this="{container}" width="{600}" active>
+	{#if $tab === 'list'}
 		<Table
 			bind:this="{table}"
-			headers="{['Code', 'Expanded']}"
-			rows="{expandersToRows(expanders)}"
+			headers="{[
+				{ label: 'Code', name: 'code' },
+				{ label: 'Expanded', name: 'expanded' },
+				{ label: 'Tags', name: 'tags' }
+			]}"
+			rows="{expandersToTableRows($Storage.expanders)}"
 			editable
 			deleteable
 			selectable
 			filterable
-			onSave="{onSave}" />
+			onSave="{onSaveTable}" />
 	{:else if $tab === 'add'}
 		<div>
 			<div class="mb-2">
 				<label for="key" class="block text-sm font-medium leading-2 text-slate-900">Code</label>
 				<div class="mt-2">
 					<input
-						bind:value="{key}"
+						bind:value="{code}"
 						type="text"
 						name="key"
 						id="key"
@@ -100,7 +110,7 @@ function resetSettings() {
 						placeholder="ex: /dis" />
 				</div>
 			</div>
-			<div>
+			<div class="mb-2">
 				<label for="expanded" class="block text-sm font-medium leading-2 text-slate-900">Expanded</label>
 				<div class="mt-2">
 					<textarea
@@ -109,6 +119,59 @@ function resetSettings() {
 						id="expanded"
 						class="block w-full rounded-sm border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 text-sm"
 						placeholder="ex: Discount"></textarea>
+				</div>
+			</div>
+			<div>
+				<label for="expanded" class="block text-sm font-medium leading-2 text-slate-900">Tags</label>
+				<div class="mt-2">
+					<div class="flex mb-2">
+						<input
+							bind:value="{newTag}"
+							type="text"
+							name="newTag"
+							id="newTag"
+							class="block w-full rounded-sm border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 text-sm"
+							placeholder="ex: /dis"
+							on:blur="{() => {
+								if (newTag && newTag.length) {
+									tagStore.update((s) => [...s, newTag]);
+								}
+								newTag = '';
+							}}" />
+						<Button
+							icon="add"
+							theme="default"
+							class="ml-1"
+							on:click="{() => {
+								if (newTag && newTag.length) {
+									tagStore.update((s) => [...s, newTag]);
+								}
+								newTag = '';
+							}}" />
+					</div>
+
+					{#each $tagStore as tag}
+						<span
+							class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10 mr-1">
+							{tag}
+							<button
+								on:click="{() => {
+									tagStore.update((s) => {
+										return s.filter((t) => t !== tag);
+									});
+								}}">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+									stroke="currentColor"
+									class="w-4 h-4">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+								</svg>
+							</button>
+						</span>
+					{/each}
 				</div>
 			</div>
 			<div class="flex mt-4">

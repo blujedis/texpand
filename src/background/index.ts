@@ -1,16 +1,35 @@
-import type { StorageSettings } from 'src/types';
+import type { Message, ReceiveHandler, StorageSettings } from 'src/types';
 import Storage from '../storage';
+import { log } from 'src/utils';
 
 let cache = {} as StorageSettings;
 
+function sendMessage(idOrMessage: string | number | Message, messageOrReceiver: Message | ReceiveHandler, receiver?: ReceiveHandler) {
 
+  let id = idOrMessage as string;
+  let message: Message;
 
-function handleMessage(message: any, sender: chrome.runtime.MessageSender, send?: (response?: any) => void) {
+  if (typeof messageOrReceiver === 'function') {
+    receiver = messageOrReceiver;
+    message = idOrMessage as Message;
+    id = undefined;
+  }
+
+  receiver = receiver || ((response: Message) => {});
+
+  if (typeof idOrMessage === 'number') {
+    chrome.runtime.sendMessage(id, message, receiver);
+  }
+  else {
+    chrome.runtime.sendMessage(message, receiver);
+  }
 
 }
 
-function sendMessage(message: any, receive?: (response: any) => void) {
-  chrome.runtime.sendMessage(message, receive);
+function handleMessage(message: Message, sender: chrome.runtime.MessageSender, send?: (response?: any) => void) {
+  if (message.type.startsWith('storage')) {
+    // send(null);
+  }
 }
 
 async function handleInstalled(details: chrome.runtime.InstalledDetails) {
@@ -18,6 +37,19 @@ async function handleInstalled(details: chrome.runtime.InstalledDetails) {
     cache = await Storage.init();
   else if (details.reason == 'update')
     cache = await Storage.upgrade();
+}
+
+function handleActivated(activeInfo: chrome.tabs.TabActiveInfo){
+  const tabId = activeInfo.tabId;
+  sendMessage(tabId, { type: 'ping' }, (response = {} as  Message) => {
+    if (!response.payload) {
+      chrome.tabs.executeScript(tabId, {file: 'src/content/index.ts'}, (result: any[]) => {
+        if (chrome.runtime.lastError) return;
+        else 
+          log('info', `Content script reactivated.`);
+      });
+    }
+  });
 }
 
 function handleOnChanged(changes: Record<keyof StorageSettings, chrome.storage.StorageChange>, area: 'sync' | 'local' | 'managed' | 'session' | 'help') {
@@ -46,15 +78,16 @@ function handleOnChanged(changes: Record<keyof StorageSettings, chrome.storage.S
 function bindEvents() {
   chrome.runtime.onMessage.addListener(handleMessage);
   chrome.runtime.onInstalled.addListener(handleInstalled);
+  chrome.tabs.onActivated.addListener(handleActivated)
   chrome.storage.onChanged.addListener(handleOnChanged);
-  chrome.runtime.onSuspend.addListener(unbindEvents);
 }
 
-function unbindEvents() {
-  chrome.runtime.onMessage.removeListener(handleMessage);
-  chrome.runtime.onInstalled.removeListener(handleInstalled);
-  chrome.storage.onChanged.removeListener(handleOnChanged);
-}
+
+// function unbindEvents() {
+//   chrome.runtime.onMessage.removeListener(handleMessage);
+//   chrome.runtime.onInstalled.removeListener(handleInstalled);
+//   chrome.storage.onChanged.removeListener(handleOnChanged);
+// }
 
 bindEvents();
 

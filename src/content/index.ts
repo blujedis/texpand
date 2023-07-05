@@ -1,41 +1,38 @@
-import type { SpecialChar, StorageSettings } from 'src/types';
+import type { Expander, Message, StorageSettings } from 'src/types';
 import Storage from 'src/storage';
 
 let cache: StorageSettings;
-let keys = [] as string[];
-let prefixes = [] as string[];
-let active = false;
 let buffer = '';
 let timeoutid: NodeJS.Timeout;
 
+function getPrefixesAndKeys() {
+  const keys = cache.expanders.map(exp => exp.code);
+  const prefixes = keys.reduce((a, c) => {
+    const prefix = c.charAt(0);
+    if (!a.includes(prefix))
+      a = [...a, prefix]
+    return a;
+  }, [] as string[]);
+  return { keys, prefixes };
+}
+
 function hasPrefix(key: string) {
-  if (!prefixes.length) {
-    // if (!keys.length) keys = KEY_VALUES.map(v => v.key);
-    if (!keys.length)
-      keys = Object.keys(cache.expanders);
-    if (!cache.settings.casesensitive)
-      keys = keys.map(k => k.toLowerCase())
-    if (!prefixes.length) prefixes = keys.reduce((a, c) => {
-      const prefix = c.charAt(0);
-      if (!a.includes(prefix))
-        a = [...a, prefix]
-      return a;
-    }, [] as string[]);
-  }
+  const { prefixes } = getPrefixesAndKeys();
   return prefixes.includes(key.charAt(0));
 }
 
 function hasMatch(key: string) {
-  if (!keys.length) keys = Object.keys(cache.expanders);
+  let lowered = [] as string[];
   if (!cache.settings.casesensitive) {
-    keys = keys.map(k => k.toLowerCase())
+    const { keys } = getPrefixesAndKeys();
+    lowered = keys.map(k => k.toLowerCase())
     key = key.toLowerCase();
   }
-  return keys.includes(key);
+  return lowered.includes(key);
 }
 
 function setActivity(value: boolean) {
-  return Storage.update({ active: value }).then(s => {
+  return Storage.update('active', value).then(s => {
     console.log('[TEXPAND]:', value ? 'active' : 'inactive');
   });
 }
@@ -49,12 +46,12 @@ function initTimeout() {
 
   if (cache.settings.timeout) {
     timeoutid = setTimeout(() => {
-      active = false;
+      cache.active = false;
       setActivity(false);
     }, cache.settings.timeout);
   }
   else {
-    active = false;
+    cache.active = false;
     setActivity(false);
   }
 
@@ -73,13 +70,13 @@ function replaceText({ e, buffer, value, lastChar }: { e: KeyboardEvent, buffer:
 }
 
 function handleKeypress(e: KeyboardEvent) {
-  if (active) {
+  if (cache.active) {
     if (hasPrefix(buffer) || hasPrefix(e.key)) {
-      clearTimeout(timeoutid);
       buffer += e.key;
+      clearTimeout(timeoutid);
       if (hasMatch(buffer)) {
-        const value = cache.expanders[buffer];
-        replaceText({ e, buffer, value, lastChar: e.key });
+        const obj = cache.expanders.find(exp => exp.code === buffer) as Expander;
+        replaceText({ e, buffer, value: obj.expanded, lastChar: e.key });
         buffer = ''; // reset the buffer.
       }
     }
@@ -90,15 +87,14 @@ function handleKeypress(e: KeyboardEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if (!active && e.repeat) return;
-  if (active && e.key === 'Backspace')
+  if (!cache.active && e.repeat) return;
+  if (cache.active && e.key === 'Backspace')
     buffer = buffer.slice(0, -1);
-  else if (!active && e.ctrlKey && cache.settings.enableKey === e.key) {
-    active = true;
+  else if (!cache.active && e.ctrlKey && cache.settings.enableKey === e.key) {
     setActivity(true);
     initTimeout();
   }
-  else if (active && e.ctrlKey && cache.settings.disableKey === e.key) {
+  else if (cache.active && e.ctrlKey && cache.settings.disableKey === e.key) {
     setActivity(false);
     clearTimeout(timeoutid);
   }
@@ -109,18 +105,29 @@ function handleStorageChanged(changes: Record<keyof StorageSettings, chrome.stor
     if (changes.expanders?.newValue) {
       cache.expanders = changes.expanders.newValue;
     }
-    else if (changes.settings?.newValue) {
+    if (changes.settings?.newValue) {
       cache.settings = changes.settings.newValue;
+    }
+    if (changes.active?.newValue) {
+      cache.active = changes.active.newValue;
     }
   }
 }
 
+function handleMessage(message: Message, sender: chrome.runtime.MessageSender, send?: (response?: any) => void) {
+  // if (msg.text === 'are_you_there_content_script?') {
+  //   sendResponse({status: "yes"});
+  // }
+  
+}
 
 function bindEvents() {
   window.addEventListener('keydown', handleKeydown);
   window.addEventListener('keypress', handleKeypress);
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+
+});
   chrome.storage.onChanged.addListener(handleStorageChanged);
-  chrome.runtime.onSuspend.addListener(unbindEvents);
 }
 
 function unbindEvents() {

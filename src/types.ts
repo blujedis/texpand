@@ -1,7 +1,8 @@
 import type { SvelteHTMLElements } from 'svelte/elements';
 import type { specialChars } from './utils';
 
-export type PrimitiveValue = string | number | boolean | undefined | null;
+export type PrimitiveValueBase = string | number | boolean;
+export type PrimitiveValue = PrimitiveValueBase | PrimitiveValueBase[] | undefined | null;
 export type HTMLTag = keyof SvelteHTMLElements; // keyof HTMLElementTagNameMap;
 export type ElementProps<K extends HTMLTag> = SvelteHTMLElements[K];
 export type TypeOrKey<Keys extends string | number | symbol> = Keys | (string & { value?: any });
@@ -17,50 +18,43 @@ export type ParsePathKey<T> = ParsePath<T, keyof T> | keyof T;
 
 export type Path<T> = ParsePathKey<T> extends string | keyof T ? ParsePathKey<T> : keyof T;
 
-// export type PathValue<T, P extends Path<T>> =
-//   P extends `${infer Key}.${infer Rest}`
-//   ? Key extends keyof T ? Rest extends Path<T[Key]>
-//   ? PathValue<T[Key], Rest>
-//   : never
-//   : never
-//   : P extends keyof T ? T[P]
-//   : never;
-
 export type PickDeep<
   T extends Record<string, any>,
   K extends string
 > = K extends `${infer U}.${infer Rest}` ? PickDeep<T[U], Rest> : T[K];
 
-export type RecordInto<K extends string, V> =
+export type RecordInto<K extends string | keyof Record<string, any>, V> =
   K extends `${infer Key}.${infer Rest}` ?
-    Rest extends string
-      ? Record<Key, RecordInto<Rest, V>> 
-      : Record<Key, V> 
+  Rest extends string
+  ? Record<Key, RecordInto<Rest, V>>
+  : Record<Key, V>
   : Record<K, V>;
 
-export type TableColumnType = 'input' | 'textarea' | 'display';
+export type TableColumnType = 'display' | 'input' | 'textarea' | 'badges' |  'select' | 'select.multiple';
 
 export interface TableColumn {
   name: string;
   type?: TableColumnType;
-  value: PrimitiveValue;
+  value: any;
+  items: { value: string | number, label?: string }[];
+  formatter?: (value: any) => any;
 }
 export type TableRow = TableColumn[];
 
+export type TableHeader = { label: string; name: string };
+
 export interface TableMeta {
-  source: TableRow[];
-  removed: string[];
-  selected: string[];
-  modified: string[];
+  removed: number;
+  modified: number;
 }
 
-export type TabName = 'home' | 'add' | 'settings' | 'help';
+export type TabName = 'list' | 'add' | 'settings' | 'help';
 
 export type SpecialChar = typeof specialChars[number];
 
 export interface Expander {
-  key: string;
-  value: string;
+  code: string;
+  expanded: string;
   tags: string[];
 }
 
@@ -77,6 +71,8 @@ export interface StorageSettings {
 };
 
 export interface Message {
-  type?: 'storage';
-  payload: any;
+  type?: 'storage' | 'log' | 'ping';
+  payload?: any;
 }
+
+export type ReceiveHandler = (response: Message) => void;

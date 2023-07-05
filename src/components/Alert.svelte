@@ -109,6 +109,10 @@ export function open(
 		theme: (newTheme as $$Props['theme']) || s.theme,
 		onClosed: confirmHandler || s.onClosed
 	}));
+
+	if (!confirmHandler) {
+		setTimeout(() => close(0), 3500);
+	}
 }
 
 export function close(confirmed?: 1 | 0) {

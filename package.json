@@ -36,6 +36,8 @@
         "vite": "3.2.0"
     },
     "dependencies": {
+        "split-string": "^6.1.0",
+        "svelecte": "^3.16.1",
         "tailwind-merge": "^1.13.2"
     }
 }

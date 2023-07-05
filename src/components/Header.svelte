@@ -39,8 +39,8 @@ function setActivity(value: boolean) {
 			<img src="/src/assets/logo.png" alt="Texpand Logo" class="h-3" />
 		</div>
 		<div class="flex flex-1 pl-4 items-end">
-			<button class="{$tab === 'home' ? classesActive : classes}" on:click="{() => tab.change('home')}"
-				>Home</button>
+			<button class="{$tab === 'list' ? classesActive : classes}" on:click="{() => tab.change('list')}"
+				>List</button>
 			<button class="{$tab === 'add' ? classesActive : classes}" on:click="{() => tab.change('add')}"
 				>Add</button>
 			<button

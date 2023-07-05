@@ -8,7 +8,7 @@ type $$Props = ElementProps<'button'> & {
 	variant?: 'default' | 'link' | 'icon';
 };
 
-export let { icon, theme, variant } = {
+export let { icon, theme, variant, disabled } = {
 	icon: null,
 	theme: 'default',
 	variant: 'default'
@@ -48,13 +48,14 @@ $: classes = themer()
 	.add('gap-x-1.5 px-2.5 py-1.5', !['link', 'icon'].includes(variant))
 	.add('underline', variant === 'link')
 	.add('p-1 rounded-full focus-visible:outline-offset-0', variant === 'icon')
+	.add('opacity-75 pointer-events-none', disabled)
 	.append($$restProps.class, $$restProps.class)
 	.compile();
 
 $: iconClasses = themer().add('h-5 w-5', true).add('-ml-0.5', $$slots.default).compile();
 </script>
 
-<button type="button" class="{classes}" on:click>
+<button {...$$restProps} type="button" class="{classes}" on:click>
 	{#if icon && variant !== 'link'}
 		{#if icon === 'save'}
 			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" class="{iconClasses}"
