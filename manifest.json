@@ -1,52 +1,55 @@
 {
-    "name": "Texpand",
-    "description": "Web extension for expanding text using predefined codes.",
-    "version": "1.0",
-    "manifest_version": 3,
-    "icons": {
-        "16": "src/assets/icons/icon_16.png",
-        "32": "src/assets/icons/icon_32.png",
-        "48": "src/assets/icons/icon_48.png",
-        "128": "src/assets/icons/icon_128.png"
-    },
-    "content_scripts": [
-        {
-            "matches": [
-                "https://*/*"
-            ],
-            "js": [
-                "src/content/index.ts"
-            ]
-        }
-    ],
-    "background": {
-        "service_worker": "src/background/index.ts"
-    },
-    "action": {
-        "default_popup": "src/popup/popup.html",
-        "default_icon": {
-            "16": "src/assets/icons/icon_16.png",
-            "32": "src/assets/icons/icon_32.png",
-            "48": "src/assets/icons/icon_48.png",
-            "128": "src/assets/icons/icon_128.png"
-        }
-    },
-    "web_accessible_resources": [
-        {
-            "resources": [
-                "src/assets/logo.png",
-                "src/assets/icons/icon_active_16.png",
-                "src/assets/icons/icon_active_32.png",
-                "src/assets/icons/icon_active_48.png",
-                "src/assets/icons/icon_active_128.png"
-            ],
-            "matches": [
-                "https://*/*"
-            ],
-            "use_dynamic_url": true
-        }
-    ],
-    "permissions": [
-        "storage"
-    ]
+  "name": "Texpand",
+  "description": "Web extension for expanding text using predefined codes.",
+  "version": "1.0",
+  "manifest_version": 3,
+  "icons": {
+    "16": "src/assets/icons/icon_16.png",
+    "32": "src/assets/icons/icon_32.png",
+    "48": "src/assets/icons/icon_48.png",
+    "128": "src/assets/icons/icon_128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/index.ts"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "src/background/index.ts"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "src/assets/icons/icon_16.png",
+      "32": "src/assets/icons/icon_32.png",
+      "48": "src/assets/icons/icon_48.png",
+      "128": "src/assets/icons/icon_128.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/assets/logo.png",
+        "src/assets/icons/icon_active_16.png",
+        "src/assets/icons/icon_active_32.png",
+        "src/assets/icons/icon_active_48.png",
+        "src/assets/icons/icon_active_128.png"
+      ],
+      "matches": [
+        "https://*/*"
+      ],
+      "use_dynamic_url": true
+    }
+  ],
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs"
+  ]
 }

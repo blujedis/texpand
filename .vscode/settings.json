@@ -1,10 +1,31 @@
 {
-    "json.schemas": [
-        {
-            "fileMatch": [
-                "manifest.json"
-            ],
-            "url": "https://json.schemastore.org/chrome-manifest.json"
-        }
-    ],
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "manifest.json"
+      ],
+      "url": "https://json.schemastore.org/chrome-manifest.json"
+    }
+  ],
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/*-lock.json": true,
+    "**/*.config.js": true,
+    "**/*-lock.yaml": true,
+    "**/tsconfig*.json": true,
+    "**/*config.ts": true,
+    "**/.gitignore": true,
+    "**/.prettierrc": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.vscode": true,
+    "**/.tmp": true,
+    "**/.github": true,
+    "**/README.md": true
+  }
 }

@@ -44,6 +44,8 @@ function initTimeout() {
   if (typeof cache.settings.timeout !== 'number' || cache.settings.timeout === -1)
     return;
 
+  clearTimeout(timeoutid);
+
   if (cache.settings.timeout) {
     timeoutid = setTimeout(() => {
       cache.active = false;
@@ -69,6 +71,26 @@ function replaceText({ e, buffer, value, lastChar }: { e: KeyboardEvent, buffer:
   }
 }
 
+function handleKeydown(e: KeyboardEvent) {
+  console.log(e.key);
+  if (!cache.active && e.repeat) return;
+  if (cache.active && e.key === 'Backspace') {
+    buffer = buffer.slice(0, -1);
+  }
+  else if (e.ctrlKey) {
+    if (e.key === cache.settings.enableKey) {
+      setActivity(true);
+      initTimeout();
+    }
+    else if (e.key === cache.settings.disableKey) {
+      setActivity(false);
+      clearTimeout(timeoutid);
+    }
+
+  }
+
+}
+
 function handleKeypress(e: KeyboardEvent) {
   if (cache.active) {
     if (hasPrefix(buffer) || hasPrefix(e.key)) {
@@ -83,20 +105,6 @@ function handleKeypress(e: KeyboardEvent) {
     else {
       buffer = '';
     }
-  }
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if (!cache.active && e.repeat) return;
-  if (cache.active && e.key === 'Backspace')
-    buffer = buffer.slice(0, -1);
-  else if (!cache.active && e.ctrlKey && cache.settings.enableKey === e.key) {
-    setActivity(true);
-    initTimeout();
-  }
-  else if (cache.active && e.ctrlKey && cache.settings.disableKey === e.key) {
-    setActivity(false);
-    clearTimeout(timeoutid);
   }
 }
 
@@ -118,15 +126,12 @@ function handleMessage(message: Message, sender: chrome.runtime.MessageSender, s
   // if (msg.text === 'are_you_there_content_script?') {
   //   sendResponse({status: "yes"});
   // }
-  
+
 }
 
 function bindEvents() {
   window.addEventListener('keydown', handleKeydown);
   window.addEventListener('keypress', handleKeypress);
-  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-
-});
   chrome.storage.onChanged.addListener(handleStorageChanged);
 }
 
@@ -136,16 +141,19 @@ function unbindEvents() {
   chrome.storage.onChanged.removeListener(handleStorageChanged);
 }
 
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('received:', message);
+  // sendResponse({ type: 'ping', payload: true });
+});
+
 function init() {
   unbindEvents();
+  bindEvents();
   if (!cache)
     Storage.get().then(s => {
       console.log('[TEXPAND]: init');
       (cache = s as StorageSettings);
-      bindEvents();
     });
-  else
-    bindEvents();
 }
 
 init();
