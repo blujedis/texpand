@@ -29,11 +29,7 @@ async function onSaveTable(rows: TableRow[], meta: TableMeta) {
 	if (!meta.modified && !meta.removed)
 		return alert.open(`Exiting, no records were modified or removed.`, 'warning');
 	const result = await Storage.update('expanders', tableToExpanderRows(rows), true);
-	if (result)
-		alert.open(
-			`${meta.modified} records were updated, ${meta.removed} were removed.`,
-			'success'
-		);
+	if (result) alert.open(`${meta.modified} records were updated, ${meta.removed} were removed.`, 'success');
 	else alert.open(`Save failed, please try again or contact support.`, 'warning');
 }
 
@@ -47,7 +43,6 @@ async function saveNew() {
 		return alert.open(`Key code must begin with a special character but got "${code.charAt(0)}"`, 'danger');
 	const obj = { code, expanded, tags: $tagStore } as Expander;
 	const result = await Storage.update('expanders', obj);
-	console.log('result', result);
 	if (!result) return alert.open('An error occurred please try again or contact support.', 'danger');
 	tab.change('list');
 	alert.open(`Successuflly added new code ${code}.`, 'success');
@@ -145,6 +140,8 @@ function resetSettings() {
 							on:click="{() => {
 								if (newTag && newTag.length) {
 									tagStore.update((s) => [...s, newTag]);
+								} else {
+									alert.open(`Whoops no tag to add!`, 'warning');
 								}
 								newTag = '';
 							}}" />

@@ -6,6 +6,7 @@ export type PrimitiveValue = PrimitiveValueBase | PrimitiveValueBase[] | undefin
 export type HTMLTag = keyof SvelteHTMLElements; // keyof HTMLElementTagNameMap;
 export type ElementProps<K extends HTMLTag> = SvelteHTMLElements[K];
 export type TypeOrKey<Keys extends string | number | symbol> = Keys | (string & { value?: any });
+export type PromiseReturnType<T> = T extends Promise<infer R> ? R : never;
 
 export type ParsePath<T, Key extends keyof T> =
   Key extends string ? T[Key] extends Record<string, any>

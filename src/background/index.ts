@@ -15,7 +15,7 @@ function sendMessage(idOrMessage: string | number | Message, messageOrReceiver: 
     id = undefined;
   }
 
-  receiver = receiver || ((response: Message) => {});
+  receiver = receiver || ((response: Message) => { });
 
   if (typeof idOrMessage === 'number') {
     chrome.runtime.sendMessage(id, message, receiver);
@@ -39,18 +39,20 @@ async function handleInstalled(details: chrome.runtime.InstalledDetails) {
     cache = await Storage.upgrade();
 }
 
-function handleActivated(activeInfo: chrome.tabs.TabActiveInfo){
-  const tabId = activeInfo.tabId;
-  sendMessage(tabId, { type: 'ping' }, (response = {} as  Message) => {
-    if (!response.payload) {
-      chrome.tabs.executeScript(tabId, {file: 'src/content/index.ts'}, (result: any[]) => {
-        if (chrome.runtime.lastError) return;
-        else 
-          log('info', `Content script reactivated.`);
-      });
-    }
-  });
-}
+// function handleActivated(activeInfo: chrome.tabs.TabActiveInfo) {
+//   const tabId = activeInfo.tabId;
+//   sendMessage(tabId, { type: 'ping' }, (response = {} as Message) => {
+//     console.info(response);
+//     const lastError = chrome.runtime.lastError;
+//     if (lastError)
+//       return console.warn(lastError.message);
+//     if (!response.payload) {
+//       // chrome.scripting.executeScript({ target: { tabId }, files: ['src/content/index.ts'] }, (results) => {
+//       //   console.log(results);
+//       // });
+//     }
+//   });
+// }
 
 function handleOnChanged(changes: Record<keyof StorageSettings, chrome.storage.StorageChange>, area: 'sync' | 'local' | 'managed' | 'session' | 'help') {
   // Dynamically changes the icon so you know Texpand is active, listening for shortcut codes.
@@ -75,19 +77,22 @@ function handleOnChanged(changes: Record<keyof StorageSettings, chrome.storage.S
   }
 }
 
+function unbindEvents() {
+  chrome.runtime.onMessage.removeListener(handleMessage);
+  chrome.runtime.onInstalled.removeListener(handleInstalled);
+  chrome.storage.onChanged.removeListener(handleOnChanged);
+}
+
 function bindEvents() {
+  unbindEvents();
+  // chrome.tabs.onActivated.addListener(handleActivated);
   chrome.runtime.onMessage.addListener(handleMessage);
   chrome.runtime.onInstalled.addListener(handleInstalled);
-  chrome.tabs.onActivated.addListener(handleActivated)
   chrome.storage.onChanged.addListener(handleOnChanged);
 }
 
 
-// function unbindEvents() {
-//   chrome.runtime.onMessage.removeListener(handleMessage);
-//   chrome.runtime.onInstalled.removeListener(handleInstalled);
-//   chrome.storage.onChanged.removeListener(handleOnChanged);
-// }
+
 
 bindEvents();
 

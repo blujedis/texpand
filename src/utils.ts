@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import splitString from 'split-string';
-import type { Expander, Path, PickDeep, RecordInto, TabName, TableColumn, TableColumnType, TableRow, TypeOrKey } from './types';
+import type { Expander, Path, PickDeep, PromiseReturnType, RecordInto, TabName, TableColumn, TableColumnType, TableRow, TypeOrKey } from './types';
 
 // export const splitByComma = /,(?=(?:(?:[^"']*["']){2})*[^"']*$)/;
 
@@ -28,10 +28,21 @@ export const tab = {
   change: (name: TabName) => tabStore.update(s => name),
 };
 
+export interface PromiseResult<T, E extends Error> {
+  err?: E & Record<string, any>;
+  data?: T;
+}
+
+export function promise<E extends Error, P extends Promise<any>>(promise: P): Promise<{ err?: E, data?: PromiseReturnType<P> }> {
+  return promise
+    .then((data) => ({ err: null, data }))
+    .catch((err) => ({ err, data: null }));
+}
+``
 export function log(type: 'log' | 'debug' | 'info' | 'warn' | 'error', message: any, ...messages: any[])
-export function log(message: any,...messages: any[])
+export function log(message: any, ...messages: any[])
 export function log(type?: any, message?: any, ...messages: any[]) {
-  if (typeof type === 'undefined') 
+  if (typeof type === 'undefined')
     return console.log();
   const isMethod = ['log', 'error', 'warn', 'info', 'debug'].includes(type);
   if (!isMethod) {
@@ -92,7 +103,7 @@ function objToCSV(obj: Record<string, any>, headers = true) {
     if (Array.isArray(value))
       normalValue = value.join(' ');
     if (value.includes(','))
-      normalValue = '"' + value +'"';
+      normalValue = '"' + value + '"';
     csv += '\r\n' + key + ',' + normalValue;
   }
   return csv;
@@ -105,7 +116,7 @@ function arrayToCSV(arr: Record<string, any>[], headers = true) {
     if (Array.isArray(v))
       v = v.join(' ');
     if (v.includes(','))
-      v = '"'+ v + '"';
+      v = '"' + v + '"';
     return v;
   }).join(',')));
   return csv;
